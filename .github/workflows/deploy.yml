@@ -36,5 +36,10 @@ jobs:
           echo "[all]" > ansible/inventory.ini
           terraform -chdir=terraform output -raw instance_ip >> ansible/inventory.ini
 
+      - name: Inject SSH Key
+        run: |
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
       - name: Run Ansible Playbook
         run: ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --private-key ~/.ssh/id_rsa -u ubuntu
