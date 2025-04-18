@@ -25,6 +25,9 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=terraform init
 
+      - name: Write SSH Public Key to tfvars
+        run: echo "ssh_public_key = \"${{ secrets.SSH_PUBLIC_KEY }}\"" > terraform/terraform.tfvars
+
       - name: Terraform Apply
         run: terraform -chdir=terraform apply -auto-approve
 
