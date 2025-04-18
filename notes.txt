@@ -1,0 +1,7 @@
+1. Create IAM user: terraform-gh-actions with AK and SK
+2. Generate SSH Key (locally)
+3. upload project to Github
+4. Update Terraform to use Github secret
+5. Deploy from Github Actions 
+6. Test with Flask BDD Service
+7. Add Flask BDD Service to EC2 instance and Github
