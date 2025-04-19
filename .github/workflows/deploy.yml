@@ -29,7 +29,7 @@ jobs:
         run: |
           echo "ssh_public_key = \"${{ secrets.SSH_PUBLIC_KEY }}\"" > terraform/terraform.tfvars
           echo 'ssh_private_key = <<EOKEY' >> terraform/terraform.tfvars
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" >> terraform/terraform.tfvars
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" >> terraform/terraform.tfvars
           echo 'EOKEY' >> terraform/terraform.tfvars
 
       - name: Terraform Plan
