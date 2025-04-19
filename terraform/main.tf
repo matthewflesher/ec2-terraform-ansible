@@ -49,7 +49,7 @@ resource "aws_instance" "selenium_hub" {
     connection {
       type        = "ssh"
       user        = "ubuntu"
-      private_key = file("~/.ssh/id_rsa")
+      private_key = var.ssh_private_key
       host        = self.public_ip
     }
   }

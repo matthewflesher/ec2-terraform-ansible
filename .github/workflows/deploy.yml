@@ -25,8 +25,15 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=terraform init
 
-      - name: Write SSH Public Key to tfvars
-        run: echo "ssh_public_key = \"${{ secrets.SSH_PUBLIC_KEY }}\"" > terraform/terraform.tfvars
+      - name: Write tfvars with SSH keys
+        run: |
+          echo "ssh_public_key = \"${{ secrets.SSH_PUBLIC_KEY }}\"" > terraform/terraform.tfvars
+          echo 'ssh_private_key = <<EOKEY' >> terraform/terraform.tfvars
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" >> terraform/terraform.tfvars
+          echo 'EOKEY' >> terraform/terraform.tfvars
+
+      - name: Terraform Plan
+        run: terraform -chdir=terraform plan -var-file=terraform.tfvars
 
       - name: Terraform Apply
         run: terraform -chdir=terraform apply -auto-approve
