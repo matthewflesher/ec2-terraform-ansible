@@ -42,17 +42,7 @@ resource "aws_instance" "selenium_hub" {
   tags = {
     Name = "SeleniumHub"
   }
-
-  provisioner "remote-exec" {
-    inline = ["echo instance ready"]
-
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = var.ssh_private_key
-      host        = self.public_ip
-    }
-  }
+  
 }
 
 output "public_ip" {
