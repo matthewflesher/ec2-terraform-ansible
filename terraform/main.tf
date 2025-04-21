@@ -12,6 +12,7 @@ resource "aws_security_group" "selenium_sg" {
   description = "Allow SSH and Selenium"
 
   ingress {
+    description = "Allow SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -19,6 +20,7 @@ resource "aws_security_group" "selenium_sg" {
   }
 
   ingress {
+    description = "Allow HTTP access to Selenium Hub"
     from_port   = 4444
     to_port     = 4444
     protocol    = "tcp"
@@ -26,10 +28,15 @@ resource "aws_security_group" "selenium_sg" {
   }
 
   egress {
+    description = "Allow all outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "selenium-sg"
   }
 }
 
@@ -37,12 +44,12 @@ resource "aws_instance" "selenium_hub" {
   ami           = "ami-0c02fb55956c7d316"  # Ubuntu 20.04 (us-east-1)
   instance_type = "t3.micro"
   key_name      = aws_key_pair.deployer.key_name
-  security_groups = [aws_security_group.selenium_sg.name]
+  vpc_security_group_ids = [aws_security_group.selenium_sg.id]
 
   tags = {
     Name = "SeleniumHub"
   }
-  
+
 }
 
 output "public_ip" {
