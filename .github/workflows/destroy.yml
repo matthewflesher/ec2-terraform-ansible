@@ -25,5 +25,12 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=terraform init
 
+      - name: Write tfvars with SSH keys
+        run: |
+          echo "ssh_public_key = \"${{ secrets.SSH_PUBLIC_KEY }}\"" > terraform/terraform.tfvars
+          echo 'ssh_private_key = <<EOKEY' >> terraform/terraform.tfvars
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" >> terraform/terraform.tfvars
+          echo 'EOKEY' >> terraform/terraform.tfvars
+
       - name: Terraform Destroy
-        run: terraform -chdir=terraform destroy -auto-approve
+        run: terraform -chdir=terraform destroy -auto-approve -var-file=terraform.tfvars
