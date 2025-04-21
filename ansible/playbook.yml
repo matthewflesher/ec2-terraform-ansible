@@ -14,11 +14,14 @@
         state: started
 
     - name: Run Selenium Hub container
-      shell: docker run -d -p 4444:4444 --name selenium-hub selenium/hub:latest
+      shell: docker run -d --restart always -p 4444:4444 --name selenium-hub selenium/hub:4.17.0
       args:
         creates: /var/lib/docker/containers
 
     - name: Run Selenium Node Chrome container
-      shell: docker run -d --link selenium-hub:hub selenium/node-chrome:latest
+      shell: docker run -d --restart always --link selenium-hub:hub selenium/node-chrome:4.17.0
       args:
         creates: /var/lib/docker/containers
+
+    - name: List running Docker containers
+      shell: docker ps

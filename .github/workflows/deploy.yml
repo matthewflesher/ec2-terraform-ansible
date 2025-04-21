@@ -3,6 +3,10 @@ name: Deploy Selenium Grid
 on:
   workflow_dispatch:
 
+concurrency:
+  group: terraform-selenium
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -25,6 +29,9 @@ jobs:
       - name: Terraform Init
         run: terraform -chdir=terraform init
 
+      - name: Terraform Validate
+        run: terraform -chdir=terraform validate
+
       - name: Write tfvars with SSH keys
         run: |
           echo "ssh_public_key = \"${{ secrets.SSH_PUBLIC_KEY }}\"" > terraform/terraform.tfvars
@@ -36,7 +43,7 @@ jobs:
         run: terraform -chdir=terraform plan -var-file=terraform.tfvars
 
       - name: Terraform Apply
-        run: terraform -chdir=terraform apply -auto-approve
+        run: terraform -chdir=terraform apply -auto-approve -var-file=terraform.tfvars
 
       - name: Install Ansible
         run: sudo apt-get update && sudo apt-get install -y ansible sshpass
@@ -51,5 +58,15 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
+      - name: Test SSH Connection
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$(terraform -chdir=terraform output -raw instance_ip) echo "SSH Success"
+
       - name: Run Ansible Playbook
         run: ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --private-key ~/.ssh/id_rsa -u ubuntu
+
+      - name: Cleanup tfvars
+        run: rm -f terraform/terraform.tfvars
+
+      - name: Cleanup SSH Key
+        run: rm -f ~/.ssh/id_rsa
