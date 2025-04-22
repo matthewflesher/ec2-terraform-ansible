@@ -1,20 +1,8 @@
 - hosts: all
   become: yes
-  gather_facts: no
+  vars:
+    ansible_python_interpreter: /usr/bin/python3.8
 
-  pre_tasks:
-    - name: Install Python 3.8
-      yum:
-        name: python38
-        state: present
-
-    - name: Set ansible_python_interpreter to /usr/bin/python3.8
-      set_fact:
-        ansible_python_interpreter: /usr/bin/python3.8
-
-    - name: Re-enable fact gathering
-      setup:
-  
   tasks:
     - name: Install Docker
       apt:

@@ -41,15 +41,26 @@ resource "aws_security_group" "selenium_sg" {
 }
 
 resource "aws_instance" "selenium_hub" {
-  ami           = "ami-0c02fb55956c7d316"
+  ami           = "ami-0c02fb55956c7d316" # Amazon Linux or similar
   instance_type = "t3.micro"
   key_name      = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.selenium_sg.id]
 
+  user_data = <<-EOF
+              #!/bin/bash
+              yum install -y gcc openssl-devel bzip2-devel libffi-devel wget make
+              cd /usr/src
+              wget https://www.python.org/ftp/python/3.8.18/Python-3.8.18.tgz
+              tar xzf Python-3.8.18.tgz
+              cd Python-3.8.18
+              ./configure --enable-optimizations
+              make altinstall
+              ln -s /usr/local/bin/python3.8 /usr/bin/python3.8
+              EOF
+
   tags = {
     Name = "SeleniumHub"
   }
-
 }
 
 output "public_ip" {
