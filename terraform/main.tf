@@ -48,14 +48,10 @@ resource "aws_instance" "selenium_hub" {
 
   user_data = <<-EOF
               #!/bin/bash
-              yum install -y gcc openssl-devel bzip2-devel libffi-devel wget make
-              cd /usr/src
-              wget https://www.python.org/ftp/python/3.8.18/Python-3.8.18.tgz
-              tar xzf Python-3.8.18.tgz
-              cd Python-3.8.18
-              ./configure --enable-optimizations
-              make altinstall
-              ln -s /usr/local/bin/python3.8 /usr/bin/python3.8
+              amazon-linux-extras enable python3.8
+              yum clean metadata
+              yum install -y python3.8
+              ln -s /usr/bin/python3.8 /usr/bin/python3
               EOF
 
   tags = {
