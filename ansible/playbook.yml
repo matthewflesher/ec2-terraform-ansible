@@ -10,7 +10,7 @@
         yum install -y python3.8
         ln -sf /usr/bin/python3.8 /usr/bin/python3
       register: python_install
-      changed_when: "'Complete!' in python_install.stdout"
+      changed_when: true
 
     - name: Set Python 3.8 as the interpreter
       set_fact:
@@ -20,16 +20,14 @@
       setup:
 
   tasks:
-    - name: Install Docker
-      yum:
-        name: docker
-        state: present
+    - name: Install Docker via raw command
+      raw: yum install -y docker
 
     - name: Enable and start Docker
       systemd:
         name: docker
-        enabled: true
         state: started
+        enabled: true
 
     - name: Run Selenium Hub container
       shell: docker run -d --restart always -p 4444:4444 --name selenium-hub selenium/hub:4.17.0
@@ -40,4 +38,8 @@
       shell: docker run -d --restart always --link selenium-hub:hub selenium/node-chrome:4.17.0
       args:
         creates: /var/lib/docker/containers
+
+    - name: List running Docker containers
+      shell: docker ps
+
 
