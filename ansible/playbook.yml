@@ -1,20 +1,36 @@
 - hosts: all
   become: yes
-  vars:
-    ansible_python_interpreter: /usr/bin/python3.8
-    
+  gather_facts: no 
+
+  pre_tasks:
+    - name: Install Python 3.8 on Amazon Linux 2
+      shell: |
+        amazon-linux-extras enable python3.8
+        yum clean metadata
+        yum install -y python3.8
+        ln -sf /usr/bin/python3.8 /usr/bin/python3
+      args:
+        executable: /bin/bash
+
+    - name: Set Python 3.8 interpreter explicitly
+      set_fact:
+        ansible_python_interpreter: /usr/bin/python3.8
+
+    - name: Re-enable fact gathering
+      setup:
+
   tasks:
     - name: Install Docker
-      apt:
-        name: docker.io
+      yum:
+        name: docker
         state: present
-        update_cache: yes
+      become: true
 
-    - name: Start Docker service
+    - name: Enable and start Docker
       systemd:
         name: docker
-        enabled: yes
         state: started
+        enabled: true
 
     - name: Run Selenium Hub container
       shell: docker run -d --restart always -p 4444:4444 --name selenium-hub selenium/hub:4.17.0
@@ -25,6 +41,3 @@
       shell: docker run -d --restart always --link selenium-hub:hub selenium/node-chrome:4.17.0
       args:
         creates: /var/lib/docker/containers
-
-    - name: List running Docker containers
-      shell: docker ps
