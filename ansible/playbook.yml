@@ -51,7 +51,7 @@
     - name: Run BDD Service container
       shell: >
         docker run -d --restart always --net selenium-grid
-        -e SELENIUM_HUB_URL=http://selenium-hub:4444
+        -e SELENIUM_HUB=http://selenium-hub:4444
         -p 5000:5000
         --name bdd-service mflesher/bdd-service
 
