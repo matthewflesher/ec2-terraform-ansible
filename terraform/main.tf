@@ -48,11 +48,16 @@ resource "aws_instance" "selenium_hub" {
 
   user_data = <<-EOF
               #!/bin/bash
+              set -eux
+              yum update -y
               amazon-linux-extras enable python3.8
               yum clean metadata
               yum install -y python3.8
-              ln -s /usr/bin/python3.8 /usr/bin/python3
+              alternatives --install /usr/bin/python python /usr/bin/python3.8 1
+              alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1
+              ln -s /usr/bin/python3.8 /usr/bin/python3.8 || true
               EOF
+
 
   tags = {
     Name = "SeleniumHub"
