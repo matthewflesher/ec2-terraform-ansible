@@ -32,12 +32,14 @@
     - name: Run Selenium Hub container
       shell: docker run -d --restart always -p 4444:4444 --name selenium-hub selenium/hub:4.17.0
       args:
-        creates: /var/lib/docker/containers
+        warn: false
+      ignore_errors: false
 
     - name: Run Selenium Node Chrome container
       shell: docker run -d --restart always --link selenium-hub:hub selenium/node-chrome:4.17.0
       args:
-        creates: /var/lib/docker/containers
+        warn: false
+      ignore_errors: false
 
     - name: List running Docker containers
       shell: docker ps
