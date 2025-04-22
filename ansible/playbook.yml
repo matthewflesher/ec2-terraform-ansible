@@ -1,18 +1,19 @@
 - hosts: all
   become: yes
-  vars:
-    ansible_python_interpreter: /usr/bin/python3.8
+  gather_facts: no
+
   pre_tasks:
     - name: Install Python 3.8
       yum:
         name: python38
         state: present
 
-    - name: Set python3.8 as default
-      alternatives:
-        name: python
-        path: /usr/bin/python3.8
-      when: ansible_distribution == "Amazon"
+    - name: Set ansible_python_interpreter to /usr/bin/python3.8
+      set_fact:
+        ansible_python_interpreter: /usr/bin/python3.8
+
+    - name: Re-enable fact gathering
+      setup:
   
   tasks:
     - name: Install Docker
