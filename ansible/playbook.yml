@@ -1,5 +1,7 @@
 - hosts: all
   become: yes
+  vars:
+    ansible_python_interpreter: /usr/bin/python3.8
   pre_tasks:
     - name: Install Python 3.8
       yum:
@@ -11,7 +13,7 @@
         name: python
         path: /usr/bin/python3.8
       when: ansible_distribution == "Amazon"
-      
+  
   tasks:
     - name: Install Docker
       apt:
