@@ -53,7 +53,7 @@
         docker run -d --restart always --net selenium-grid
         -e SELENIUM_HUB=http://selenium-hub:4444
         -p 5000:5000
-        --name bdd-service mflesher/bdd-service
+        --name bdd-service mrflesher/bdd-service
 
     - name: List running Docker containers
       shell: docker ps
