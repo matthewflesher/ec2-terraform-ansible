@@ -61,10 +61,10 @@ jobs:
 
       - name: Test SSH Connection
         run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$(terraform -chdir=terraform output -raw instance_ip) echo "SSH Success"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@$(terraform -chdir=terraform output -raw instance_ip) echo "SSH Success"
 
       - name: Run Ansible Playbook
-        run: ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --private-key ~/.ssh/id_rsa -u ubuntu
+        run: ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --private-key ~/.ssh/id_rsa -u ec2-user
 
       - name: Cleanup tfvars
         run: rm -f terraform/terraform.tfvars
