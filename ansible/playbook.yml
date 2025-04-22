@@ -29,14 +29,35 @@
         state: started
         enabled: true
 
+    - name: Create Docker network for Selenium Grid
+      shell: docker network create selenium-grid
+      ignore_errors: true
+
     - name: Run Selenium Hub container
-      shell: docker run -d --restart always -p 4444:4444 --name selenium-hub selenium/hub:4.17.0
+      shell: docker run -d --restart always --net selenium-grid --name selenium-hub -p 4444:4444 selenium/hub:4.17.0
 
     - name: Run Selenium Node Chrome container
-      shell: docker run -d --restart always --link selenium-hub:hub selenium/node-chrome:4.17.0
+      shell: >
+        docker run -d --restart always --net selenium-grid
+        -e SE_EVENT_BUS_HOST=selenium-hub
+        -e SE_EVENT_BUS_PUBLISH_PORT=4442
+        -e SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+        selenium/node-chrome:4.17.0
+
+    - name: Log in to Docker Hub
+      shell: echo "{{ dockerhub_password }}" | docker login --username "{{ dockerhub_username }}" --password-stdin
+      no_log: true
+
+    - name: Run BDD Service container
+      shell: >
+        docker run -d --restart always --net selenium-grid
+        -e SELENIUM_HUB_URL=http://selenium-hub:4444
+        -p 5000:5000
+        --name bdd-service mflesher/bdd-service
 
     - name: List running Docker containers
       shell: docker ps
+
 
 
 

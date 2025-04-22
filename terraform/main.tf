@@ -27,6 +27,14 @@ resource "aws_security_group" "selenium_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    from_port   = 5000
+    to_port     = 5000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+
   egress {
     description = "Allow all outbound traffic"
     from_port   = 0

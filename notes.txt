@@ -1,5 +1,2 @@
-5. Deploy from Github Actions 
-   - Add remote S3 and DynamoDB so Terraform remembers state
-   - Test destroy.yml with state
-6. Test with Flask BDD Service
-7. Add Flask BDD Service to EC2 instance and Github
+Ensure Chrome Node gets added to Selenium Hub
+Add Flask BDD Service to Ansible Playbook
