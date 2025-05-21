@@ -3,11 +3,10 @@ kind: Service
 metadata:
   name: bdd-service
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: bdd-service
   ports:
   - protocol: TCP
     port: 5000       # Port inside the cluster
     targetPort: 5000  # Port on the pod
-    nodePort: 30002 
