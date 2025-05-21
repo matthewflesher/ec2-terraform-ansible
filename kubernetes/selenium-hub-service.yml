@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: selenium-hub
 spec:
-  type: LoadBalancer
+  type: NodePort
   selector:
     app: selenium-hub
   ports:
@@ -11,6 +11,7 @@ spec:
     protocol: TCP
     port: 4444       # Port inside the cluster
     targetPort: 4444  # Port on the pod
+    nodePort: 30001
   - name: bus-publish-port
     protocol: TCP
     port: 4442
