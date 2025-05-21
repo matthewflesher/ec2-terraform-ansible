@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: bdd-service
-        image: mrflesher/bdd-service
+        image: mrflesher/bdd-service:latest
         ports:
         - containerPort: 5000
         env:
