@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: selenium-hub
-        image: selenium/hub:4.17.0
+        image: selenium/hub:4.21.0
         ports:
         - containerPort: 4444 # Default Selenium Hub port
         - containerPort: 4442 # Event Bus Publish port
