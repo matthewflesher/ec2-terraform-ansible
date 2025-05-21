@@ -56,8 +56,8 @@ resource "aws_security_group" "selenium_sg" {
 }
 
 resource "aws_instance" "selenium_hub" {
-  ami           = "ami-0c02fb55956c7d316" # Amazon Linux or similar
-  instance_type = "t3.micro"
+  ami           = "ami-0e58b56aa4d64231b" # Amazon Linux or similar
+  instance_type = "c6gn.2xlarge"
   key_name      = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.selenium_sg.id]
 
