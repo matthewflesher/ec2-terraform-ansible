@@ -36,17 +36,26 @@
         append: yes
 
     - name: Download kubectl
-      shell: curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-      args:
-        creates: ./kubectl
+      shell: |
+        ACTUAL_ARCH="{{ architecture_info.stdout }}"
+        TARGET_ARCH=""
+        if [ "${ACTUAL_ARCH}" = "x86_64" ]; then
+          TARGET_ARCH="amd64"
+        elif [ "${ACTUAL_ARCH}" = "aarch64" ]; then
+          TARGET_ARCH="arm64"
+        else
+          echo "Unsupported architecture for kubectl: ${ACTUAL_ARCH}" >&2
+          exit 1
+        fi
+        echo "Downloading kubectl for architecture: ${TARGET_ARCH}"
+        K8S_STABLE_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+        curl -Lo ./kubectl "https://dl.k8s.io/release/${K8S_STABLE_VERSION}/bin/linux/${TARGET_ARCH}/kubectl"
 
     - name: Make kubectl executable
       shell: chmod +x ./kubectl
 
     - name: Move kubectl to /usr/local/bin
       shell: mv ./kubectl /usr/local/bin/kubectl
-      args:
-        creates: /usr/local/bin/kubectl
 
     - name: Determine machine architecture
       command: uname -m
