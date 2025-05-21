@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bdd-service
+  labels:
+    app: bdd-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bdd-service
+  template:
+    metadata:
+      labels:
+        app: bdd-service
+    spec:
+      containers:
+      - name: bdd-service
+        image: mrflesher/bdd-service
+        ports:
+        - containerPort: 5000
+        env:
+        - name: SELENIUM_HUB # As per existing Ansible playbook
+          value: "http://selenium-hub:4444" # Service name and port of the Selenium Hub
