@@ -29,6 +29,12 @@
         state: started
         enabled: true
 
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
     - name: Download kubectl
       shell: curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
       args:
@@ -55,15 +61,25 @@
       args:
         creates: /usr/local/bin/kind
 
+    - name: Ensure /usr/local/bin is in PATH
+      lineinfile:
+        path: /etc/profile
+        line: 'export PATH=$PATH:/usr/local/bin'
+        state: present
+
     - name: Check if kind cluster already exists
       shell: kind get clusters | grep -q '^selenium-grid$'
       register: kind_cluster_exists
       ignore_errors: true
       changed_when: false
+      environment:
+        PATH: "/usr/local/bin:/usr/bin:/bin"
 
     - name: Create Kind cluster if it does not exist
       shell: kind create cluster --name selenium-grid
       when: kind_cluster_exists.rc != 0
+      environment:
+        PATH: "/usr/local/bin:/usr/bin:/bin"
 
     - name: Create directory for kubernetes manifests on EC2
       file:
