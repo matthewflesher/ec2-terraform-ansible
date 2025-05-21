@@ -21,15 +21,15 @@ resource "aws_security_group" "selenium_sg" {
 
   ingress {
     description = "Allow HTTP access to Selenium Hub"
-    from_port   = 30001
-    to_port     = 30001
+    from_port   = 4444
+    to_port     = 4444
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
-    from_port   = 30002
-    to_port     = 30002
+    from_port   = 5000
+    to_port     = 5000
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
