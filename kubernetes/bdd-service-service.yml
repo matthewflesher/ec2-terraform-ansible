@@ -10,5 +10,4 @@ spec:
   - protocol: TCP
     port: 5000       # Port inside the cluster
     targetPort: 5000  # Port on the pod
-    # nodePort: 30002 # Optional: specify a NodePort, or let K8s assign one
-                      # For now, let K8s assign.
+    nodePort: 30002 
