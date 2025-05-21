@@ -129,6 +129,21 @@
         group: ec2-user
         mode: '0644'
 
+    - name: Create DockerHub imagePullSecret for Kubernetes
+      shell: |
+        kubectl create secret docker-registry dockerhub-secret \
+          --docker-username="{{ dockerhub_username }}" \
+          --docker-password="{{ dockerhub_password }}" \
+          --docker-email="{{ dockerhub_email }}" \
+          --dry-run=client -o yaml | kubectl apply -f -
+      args:
+        executable: /bin/bash
+      environment:
+        dockerhub_username: "{{ lookup('env', 'DOCKERHUB_USERNAME') }}"
+        dockerhub_password: "{{ lookup('env', 'DOCKERHUB_PASSWORD') }}"
+        dockerhub_email: "{{ lookup('env', 'DOCKERHUB_EMAIL') }}"
+      no_log: true
+
     - name: Apply Selenium Hub Service
       shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-hub-service.yml
       environment:
