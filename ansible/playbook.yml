@@ -53,20 +53,35 @@
       register: architecture_info
       changed_when: false
 
+    - name: Display architecture info
+      debug:
+        msg: >
+          Detected architecture (uname -m): {{ architecture_info.stdout }}.
+          Target ARCH for download: {% if architecture_info.stdout == 'x86_64' %}amd64{% elif architecture_info.stdout == 'aarch64' %}arm64{% else %}Unsupported/Unknown{% endif %}
+
     - name: Download kind
       shell: |
-        ARCH=$(echo "{{ architecture_info.stdout }}" | sed 's/x86_64/amd64/' | sed 's/aarch64/arm64/')
-        curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-${ARCH}"
+        ACTUAL_ARCH="{{ architecture_info.stdout }}"
+        TARGET_ARCH=""
+        if [ "${ACTUAL_ARCH}" = "x86_64" ]; then
+          TARGET_ARCH="amd64"
+        elif [ "${ACTUAL_ARCH}" = "aarch64" ]; then
+          TARGET_ARCH="arm64"
+        else
+          echo "Unsupported architecture: ${ACTUAL_ARCH}" >&2
+          exit 1
+        fi
+        echo "Downloading kind for architecture: ${TARGET_ARCH}"
+        curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-${TARGET_ARCH}"
       args:
         creates: ./kind
+      register: download_kind_result
 
     - name: Make kind executable
       shell: chmod +x ./kind
 
     - name: Move kind to /usr/local/bin
       shell: mv ./kind /usr/local/bin/kind
-      args:
-        creates: /usr/local/bin/kind
 
     - name: Ensure /usr/local/bin is in PATH
       lineinfile:
