@@ -17,6 +17,8 @@ spec:
       containers:
       - name: bdd-service
         image: mrflesher/bdd-service:latest
+        imagePullSecrets:
+        - name: dockerhub-secret
         ports:
         - containerPort: 5000
         env:
