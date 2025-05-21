@@ -35,6 +35,17 @@
         groups: docker
         append: yes
 
+    - name: Determine machine architecture
+      command: uname -m
+      register: architecture_info
+      changed_when: false
+
+    - name: Display architecture info
+      debug:
+        msg: >
+          Detected architecture (uname -m): {{ architecture_info.stdout }}.
+          Target ARCH for download: {% if architecture_info.stdout == 'x86_64' %}amd64{% elif architecture_info.stdout == 'aarch64' %}arm64{% else %}Unsupported/Unknown{% endif %}
+
     - name: Download kubectl
       shell: |
         ACTUAL_ARCH="{{ architecture_info.stdout }}"
@@ -56,17 +67,6 @@
 
     - name: Move kubectl to /usr/local/bin
       shell: mv ./kubectl /usr/local/bin/kubectl
-
-    - name: Determine machine architecture
-      command: uname -m
-      register: architecture_info
-      changed_when: false
-
-    - name: Display architecture info
-      debug:
-        msg: >
-          Detected architecture (uname -m): {{ architecture_info.stdout }}.
-          Target ARCH for download: {% if architecture_info.stdout == 'x86_64' %}amd64{% elif architecture_info.stdout == 'aarch64' %}arm64{% else %}Unsupported/Unknown{% endif %}
 
     - name: Download kind
       shell: |
