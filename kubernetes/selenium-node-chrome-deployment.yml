@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: selenium-node-chrome
+  labels:
+    app: selenium-node-chrome
+spec:
+  replicas: 1 # Start with 1, can be scaled later
+  selector:
+    matchLabels:
+      app: selenium-node-chrome
+  template:
+    metadata:
+      labels:
+        app: selenium-node-chrome
+    spec:
+      containers:
+      - name: selenium-node-chrome
+        image: selenium/node-chrome:4.17.0
+        ports:
+        - containerPort: 5555 # Default port for Chrome node
+        env:
+        - name: SE_EVENT_BUS_HOST
+          value: "selenium-hub" # Service name of the Selenium Hub
+        - name: SE_EVENT_BUS_PUBLISH_PORT
+          value: "4442"
+        - name: SE_EVENT_BUS_SUBSCRIBE_PORT
+          value: "4443"
+        - name: VNC_NO_PASSWORD # As per existing Ansible playbook
+          value: "1"
+        # Optional: Add resource limits/requests if needed
