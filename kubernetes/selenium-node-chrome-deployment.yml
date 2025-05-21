@@ -16,10 +16,14 @@ spec:
     spec:
       containers:
       - name: selenium-node-chrome
-        image: selenium/node-chrome:4.17.0
+        image: selenium/node-chrome:125.0
         ports:
         - containerPort: 5555 # Default port for Chrome node
         env:
+        - name: HUB_HOST
+          value: "selenium-hub"
+        - name: HUB_PORT
+          value: "4444"
         - name: SE_EVENT_BUS_HOST
           value: "selenium-hub" # Service name of the Selenium Hub
         - name: SE_EVENT_BUS_PUBLISH_PORT
