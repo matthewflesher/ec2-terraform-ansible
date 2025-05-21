@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: selenium-node-chrome
-        image: selenium/node-chrome:125.0-20250515
+        image: selenium/node-chrome
         ports:
         - containerPort: 5555 # Default port for Chrome node
         env:
