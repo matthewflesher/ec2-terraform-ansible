@@ -42,18 +42,6 @@
     k8s_version: "1.29"
 
   tasks:
-    - name: Disable SELinux enforcement
-      shell: setenforce 0
-      ignore_errors: yes
-      when: ansible_distribution == "Amazon"
-
-    - name: Set SELinux to permissive in config
-      replace:
-        path: /etc/selinux/config
-        regexp: '^SELINUX=enforcing'
-        replace: 'SELINUX=permissive'
-      when: ansible_distribution == "Amazon"
-
     - name: Install yum-utils
       shell: yum install -y yum-utils
       when: ansible_distribution == "Amazon"
@@ -131,6 +119,13 @@
 
     - name: Restart kubelet to apply config
       shell: systemctl restart kubelet
+
+    - name: Enable IP forwarding
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        state: present
+        reload: yes
 
     # ==============================================================================
     # MASTER NODE CONFIGURATION
