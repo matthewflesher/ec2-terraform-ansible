@@ -35,97 +35,89 @@
       setup:
 
   tasks:
-    - name: Debug OS distribution
-      debug:
-        msg: "OS is {{ ansible_distribution }}"
-    
-    - name: Add Kubernetes repo (v1.29)
+    - name: Disable SELinux enforcement
+      shell: setenforce 0
+      ignore_errors: yes
+      when: ansible_distribution == "Amazon"
+
+    - name: Set SELinux to permissive in config
+      replace:
+        path: /etc/selinux/config
+        regexp: '^SELINUX=enforcing'
+        replace: 'SELINUX=permissive'
+      when: ansible_distribution == "Amazon"
+
+    - name: Install yum-utils
+      shell: yum install -y yum-utils
+      when: ansible_distribution == "Amazon"
+
+    - name: Install containerd
+      shell: yum install -y containerd
+      register: containerd_result
+      retries: 3
+      delay: 10
+      until: containerd_result.rc == 0
+      when: ansible_distribution == "Amazon"
+
+    - name: Ensure containerd service exists
+      stat:
+        path: /usr/lib/systemd/system/containerd.service
+      register: containerd_service_file
+
+    - name: Reload systemd if containerd unit exists
+      shell: systemctl daemon-reexec
+      when: containerd_service_file.stat.exists
+
+    - name: Enable and start containerd
+      shell: systemctl enable --now containerd
+      when: containerd_service_file.stat.exists
+
+    - name: Load br_netfilter module
+      shell: modprobe br_netfilter
+
+    - name: Set sysctl for Kubernetes networking
+      sysctl:
+        name: net.bridge.bridge-nf-call-iptables
+        value: 1
+        state: present
+        reload: yes
+
+    - name: Add Kubernetes repo
       shell: |
-        sudo tee /etc/yum.repos.d/kubernetes.repo <<EOF
+        tee /etc/yum.repos.d/kubernetes.repo <<EOF
         [kubernetes]
         name=Kubernetes
-        baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+        baseurl=https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/
         enabled=1
         gpgcheck=1
         repo_gpgcheck=1
-        gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+        gpgkey=https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/repodata/repomd.xml.key
         EOF
       when: ansible_distribution == "Amazon"
-    
-    - name: Install kubelet, kubeadm, kubectl (v1.29) with retry
-      shell: |
-        sudo yum install -y kubelet kubeadm kubectl
+
+    - name: Install kubelet, kubeadm, and kubectl
+      shell: yum install -y kubelet kubeadm kubectl
       register: kube_result
       retries: 5
       delay: 10
       until: kube_result.rc == 0
       when: ansible_distribution == "Amazon"
-    
-    - name: Enable kubelet service
-      shell: sudo systemctl enable --now kubelet
-      when: ansible_distribution == "Amazon"
 
-    - name: Ensure containerd config directory exists
-      file:
-        path: /etc/containerd
-        state: directory
+    - name: Enable kubelet
+      shell: systemctl enable --now kubelet
 
-    - name: Create default containerd config and enable SystemdCgroup
-      shell: |
-        containerd config default > /etc/containerd/config.toml
-        sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
-      args:
-        creates: /etc/containerd/config.toml # Only run if file doesn't exist
-      notify: Restart containerd
-
-    - name: Ensure containerd is installed (Amazon Linux 2)
-      shell: |
-        sudo yum install -y containerd
-      register: containerd_installed
-      retries: 3
-      delay: 10
-      until: containerd_installed.rc == 0
-      when: ansible_distribution == "Amazon"
-    
-    - name: Ensure containerd service exists
-      stat:
-        path: /usr/lib/systemd/system/containerd.service
-      register: containerd_service_file
-      when: ansible_distribution == "Amazon"
-    
-    - name: Reload systemd if containerd service file is present
-      shell: sudo systemctl daemon-reexec
-      when:
-        - ansible_distribution == "Amazon"
-        - containerd_service_file.stat.exists
-    
-    - name: Enable and start containerd
-      shell: |
-        sudo systemctl enable --now containerd
-      when:
-        - ansible_distribution == "Amazon"
-        - containerd_service_file.stat.exists
-
-    - name: Ensure br_netfilter module is loaded
-      community.general.modprobe:
-        name: br_netfilter
-        state: present
-      notify: Configure sysctl for Kubernetes
-
-    - name: Ensure overlay module is loaded
-      community.general.modprobe:
-        name: overlay
-        state: present
-      notify: Configure sysctl for Kubernetes
-
-    - name: Create Kubernetes sysctl config file
+    - name: Create kubelet containerd config drop-in
       copy:
-        dest: /etc/sysctl.d/99-kubernetes-cri.conf
+        dest: /etc/systemd/system/kubelet.service.d/0-containerd.conf
         content: |
-          net.bridge.bridge-nf-call-iptables  = 1
-          net.ipv4.ip_forward                 = 1
-          net.bridge.bridge-nf-call-ip6tables = 1
-      notify: Configure sysctl for Kubernetes
+          [Service]
+          Environment="KUBELET_EXTRA_ARGS=--container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
+
+    - name: Reload systemd after drop-in
+      shell: systemctl daemon-reexec
+
+    - name: Restart kubelet to apply config
+      shell: systemctl restart kubelet
 
     # ==============================================================================
     # MASTER NODE CONFIGURATION
