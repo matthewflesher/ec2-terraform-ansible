@@ -39,19 +39,32 @@
       debug:
         msg: "OS is {{ ansible_distribution }}"
     
-    - name: Enable Docker via amazon-linux-extras
+    - name: Install Kubernetes repo
       shell: |
-        sudo amazon-linux-extras enable docker
-        sudo yum clean metadata
+        cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+        [kubernetes]
+        name=Kubernetes
+        baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+        enabled=1
+        gpgcheck=1
+        repo_gpgcheck=1
+        gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+        exclude=kubelet kubeadm kubectl
+        EOF
+        sudo setenforce 0 || true
       when: ansible_distribution == "Amazon"
     
-    - name: Install containerd with retry on Amazon Linux 2
+    - name: Install kubelet, kubeadm, and kubectl with retry
       shell: |
-        sudo yum install -y containerd
-      register: containerd_result
+        sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+      register: kube_result
       retries: 5
       delay: 15
-      until: containerd_result.rc == 0
+      until: kube_result.rc == 0
+      when: ansible_distribution == "Amazon"
+    
+    - name: Enable kubelet service
+      shell: sudo systemctl enable --now kubelet
       when: ansible_distribution == "Amazon"
 
     - name: Ensure containerd config directory exists
