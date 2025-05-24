@@ -47,17 +47,53 @@ resource "aws_security_group" "selenium_sg" {
   }
 }
 
-resource "aws_instance" "selenium_hub" {
+resource "aws_instance" "k8s_master" {
   ami           = "ami-0972357ba34d1ec40" # Amazon Linux or similar
-  instance_type = "c6gn.2xlarge"
+  instance_type = "t3.medium"
   key_name      = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.selenium_sg.id]
 
+  root_block_device {
+    volume_size           = 50
+    delete_on_termination = true
+  }
+
   tags = {
-    Name = "SeleniumHub"
+    Name = "k8s-master"
+    Role = "k8s-master"
   }
 }
 
-output "public_ip" {
-  value = aws_instance.selenium_hub.public_ip
+resource "aws_instance" "k8s_worker_1" {
+  ami           = "ami-0972357ba34d1ec40" # Amazon Linux or similar
+  instance_type = "t3.medium"
+  key_name      = aws_key_pair.deployer.key_name
+  vpc_security_group_ids = [aws_security_group.selenium_sg.id]
+
+  root_block_device {
+    volume_size           = 50
+    delete_on_termination = true
+  }
+
+  tags = {
+    Name = "k8s-worker-1"
+    Role = "k8s-worker"
+  }
+}
+
+resource "aws_instance" "k8s_worker_2" {
+  ami           = "ami-0972357ba34d1ec40" # Amazon Linux or similar
+  instance_type = "t3.medium"
+  key_name      = aws_key_pair.deployer.key_name
+  vpc_security_group_ids = [aws_security_group.selenium_sg.id]
+
+  root_block_device {
+    volume_size           = 50
+    delete_on_termination = true
+  }
+
+  tags = {
+    Name = "k8s-worker-2"
+    Role = "k8s-worker"
+  }
 }
