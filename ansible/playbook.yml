@@ -15,7 +15,7 @@
 # workers
 - hosts: all
   become: yes
-  gather_facts: yes # Changed to yes to use inventory_hostname reliably
+  gather_facts: no # Changed to no, will rely on manual fact gathering in pre_tasks
 
   pre_tasks:
     - name: Bootstrap Python 3.8 using raw command
