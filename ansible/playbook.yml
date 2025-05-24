@@ -177,8 +177,15 @@
       ignore_errors: yes
 
     - name: Join worker nodes to the cluster
-      shell: "{{ hostvars['k8s-master']['join_command'] }} --ignore-preflight-errors=FileExisting-tc"
-      when: inventory_hostname != 'k8s-master'
+      shell: |
+        echo "Running join command: {{ hostvars['k8s-master']['kubeadm_join_command'] }}" >> /tmp/debug_join.log
+        {{ hostvars['k8s-master']['kubeadm_join_command'] }} >> /tmp/node_join.log 2>&1
+      args:
+        executable: /bin/bash
+        timeout: 300
+      become: yes
+      register: join_result
+      ignore_errors: yes
 
     # ==============================================================================
     # DEPLOY KUBERNETES MANIFESTS (ON MASTER NODE)
