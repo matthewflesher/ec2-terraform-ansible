@@ -35,11 +35,15 @@
       setup:
 
   tasks:
-    - name: Install containerd.io
-      ansible.builtin.package:
+    - name: Debug OS distribution
+      debug:
+        msg: "OS is {{ ansible_distribution }}"
+    
+    - name: Install containerd.io on Amazon Linux
+      yum:
         name: containerd.io
         state: present
-      notify: Restart containerd
+      when: ansible_distribution == "Amazon"
 
     - name: Ensure containerd config directory exists
       file:
