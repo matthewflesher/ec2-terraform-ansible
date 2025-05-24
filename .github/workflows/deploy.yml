@@ -82,6 +82,8 @@ jobs:
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ec2-user@$(terraform -chdir=terraform output -raw master_public_ip) echo "SSH Success"
 
       - name: Run Ansible Playbook
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
         run: |
           ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --extra-vars "dockerhub_email=${{ secrets.DOCKERHUB_EMAIL }} dockerhub_username=${{ secrets.DOCKERHUB_USERNAME }} dockerhub_password=${{ secrets.DOCKERHUB_PASSWORD }}"
 
