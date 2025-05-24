@@ -34,14 +34,11 @@
     - name: Manually gather facts using new interpreter
       setup:
 
-  tasks:
-    - name: Set up Kubernetes cluster on Amazon Linux 2
-  hosts: all
-  become: yes
   vars:
     k8s_version: "1.29"
 
   tasks:
+    # - name: Set up Kubernetes cluster on Amazon Linux 2 # This task name is redundant as the play itself describes this.
     - name: Install yum-utils
       shell: yum install -y yum-utils
       when: ansible_distribution == "Amazon"
@@ -160,21 +157,28 @@
             group: ec2-user
             mode: '0600'
 
+        - name: Generate join command for worker nodes
+          shell: kubeadm token create --print-join-command
+          register: join_command_raw
+
+        - name: Set join command as a fact
+          set_fact:
+            join_command: "{{ join_command_raw.stdout }}"
+
         - name: Deploy Flannel CNI plugin
           shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
           environment:
             KUBECONFIG: /etc/kubernetes/admin.conf
-          when: inventory_hostname == 'k8s-master'
+      when: inventory_hostname == 'k8s-master'
 
-        - name: Reset Kubernetes components on worker nodes
-          shell: kubeadm reset -f
-          when: inventory_hostname != 'k8s-master'
-          ignore_errors: yes
-    
-        - name: Join worker nodes to the cluster
-          shell: kubeadm join 172.31.88.98:6443 --token cj86wm.x8asjft6rt2fq0ok \
-                 --discovery-token-ca-cert-hash sha256:8c180cf118d70ab7ecab737dca9e9cd7984c0b8746350210d267e98460c475dc --ignore-preflight-errors=FileExisting-tc
-          when: inventory_hostname != 'k8s-master'
+    - name: Reset Kubernetes components on worker nodes
+      shell: kubeadm reset -f
+      when: inventory_hostname != 'k8s-master'
+      ignore_errors: yes
+
+    - name: Join worker nodes to the cluster
+      shell: "{{ hostvars['k8s-master']['join_command'] }} --ignore-preflight-errors=FileExisting-tc"
+      when: inventory_hostname != 'k8s-master'
 
     # ==============================================================================
     # DEPLOY KUBERNETES MANIFESTS (ON MASTER NODE)
