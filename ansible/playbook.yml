@@ -182,7 +182,6 @@
         {{ hostvars['k8s-master']['kubeadm_join_command'] }} >> /tmp/node_join.log 2>&1
       args:
         executable: /bin/bash
-        timeout: 300
       become: yes
       register: join_result
       ignore_errors: yes
