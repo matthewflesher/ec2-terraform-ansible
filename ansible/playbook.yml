@@ -39,11 +39,11 @@
       debug:
         msg: "OS is {{ ansible_distribution }}"
     
-    - name: Install containerd.io on Amazon Linux
-      yum:
-        name: containerd.io
-        state: present
-        use_backend: dnf5
+    - name: Install containerd.io using shell on Amazon Linux
+      shell: |
+        sudo dnf install -y containerd.io
+      args:
+        warn: false
       when: ansible_distribution == "Amazon"
 
     - name: Ensure containerd config directory exists
