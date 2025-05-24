@@ -165,10 +165,15 @@
           environment:
             KUBECONFIG: /etc/kubernetes/admin.conf
           when: inventory_hostname == 'k8s-master'
+
+        - name: Reset Kubernetes components on worker nodes
+          shell: kubeadm reset -f
+          when: inventory_hostname != 'k8s-master'
+          ignore_errors: yes
     
         - name: Join worker nodes to the cluster
           shell: kubeadm join 172.31.88.98:6443 --token cj86wm.x8asjft6rt2fq0ok \
-                 --discovery-token-ca-cert-hash sha256:8c180cf118d70ab7ecab737dca9e9cd7984c0b8746350210d267e98460c475dc
+                 --discovery-token-ca-cert-hash sha256:8c180cf118d70ab7ecab737dca9e9cd7984c0b8746350210d267e98460c475dc --ignore-preflight-errors=FileExisting-tc
           when: inventory_hostname != 'k8s-master'
 
     # ==============================================================================
