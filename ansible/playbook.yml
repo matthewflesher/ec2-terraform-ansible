@@ -39,9 +39,12 @@
       debug:
         msg: "OS is {{ ansible_distribution }}"
     
-    - name: Install containerd.io using shell on Amazon Linux
-      shell: |
-        sudo dnf install -y containerd.io
+    - name: Add Docker repo on Amazon Linux 2
+      shell: sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+      when: ansible_distribution == "Amazon"
+    
+    - name: Install containerd.io using yum on Amazon Linux 2
+      shell: sudo yum install -y containerd.io
       when: ansible_distribution == "Amazon"
 
     - name: Ensure containerd config directory exists
