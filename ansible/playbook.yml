@@ -35,13 +35,8 @@
       setup:
 
   tasks:
-    - name: Force pkg_mgr to yum for Amazon Linux
-      set_fact:
-        ansible_pkg_mgr: "yum"
-      when: ansible_distribution == "Amazon"
-
     - name: Install containerd.io
-      yum:
+      ansible.builtin.package:
         name: containerd.io
         state: present
       notify: Restart containerd
