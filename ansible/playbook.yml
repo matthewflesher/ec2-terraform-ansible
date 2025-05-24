@@ -78,11 +78,33 @@
         creates: /etc/containerd/config.toml # Only run if file doesn't exist
       notify: Restart containerd
 
-    - name: Enable and start containerd service
-      systemd:
-        name: containerd
-        state: started
-        enabled: true
+    - name: Ensure containerd is installed (Amazon Linux 2)
+      shell: |
+        sudo yum install -y containerd
+      register: containerd_installed
+      retries: 3
+      delay: 10
+      until: containerd_installed.rc == 0
+      when: ansible_distribution == "Amazon"
+    
+    - name: Ensure containerd service exists
+      stat:
+        path: /usr/lib/systemd/system/containerd.service
+      register: containerd_service_file
+      when: ansible_distribution == "Amazon"
+    
+    - name: Reload systemd if containerd service file is present
+      shell: sudo systemctl daemon-reexec
+      when:
+        - ansible_distribution == "Amazon"
+        - containerd_service_file.stat.exists
+    
+    - name: Enable and start containerd
+      shell: |
+        sudo systemctl enable --now containerd
+      when:
+        - ansible_distribution == "Amazon"
+        - containerd_service_file.stat.exists
 
     - name: Add Kubernetes YUM repository
       copy:
