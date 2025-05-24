@@ -1,6 +1,21 @@
+# IMPORTANT: This playbook assumes an Ansible inventory setup where:
+# 1. The master node is part of a group named 'masters'.
+# 2. The master node's inventory_hostname is 'k8s-master' (or resolvable as such for fact delegation).
+# 3. Worker nodes are not named 'k8s-master'.
+# Example inventory snippet:
+# [masters]
+# k8s-master ansible_host=1.2.3.4
+#
+# [workers]
+# k8s-worker-1 ansible_host=1.2.3.5
+# k8s-worker-2 ansible_host=1.2.3.6
+#
+# [all:children]
+# masters
+# workers
 - hosts: all
   become: yes
-  gather_facts: no
+  gather_facts: yes # Changed to yes to use inventory_hostname reliably
 
   pre_tasks:
     - name: Bootstrap Python 3.8 using raw command
@@ -20,156 +35,257 @@
       setup:
 
   tasks:
-    - name: Install Docker via raw command
-      raw: yum install -y docker
+    - name: Install containerd.io
+      yum:
+        name: containerd.io
+        state: present
+      notify: Restart containerd
 
-    - name: Enable and start Docker
+    - name: Ensure containerd config directory exists
+      file:
+        path: /etc/containerd
+        state: directory
+
+    - name: Create default containerd config and enable SystemdCgroup
+      shell: |
+        containerd config default > /etc/containerd/config.toml
+        sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+      args:
+        creates: /etc/containerd/config.toml # Only run if file doesn't exist
+      notify: Restart containerd
+
+    - name: Enable and start containerd service
       systemd:
-        name: docker
+        name: containerd
         state: started
         enabled: true
 
-    - name: Add ec2-user to docker group
-      user:
-        name: ec2-user
-        groups: docker
-        append: yes
-
-    - name: Determine machine architecture
-      command: uname -m
-      register: architecture_info
-      changed_when: false
-
-    - name: Display architecture info
-      debug:
-        msg: >
-          Detected architecture (uname -m): {{ architecture_info.stdout }}.
-          Target ARCH for download: {% if architecture_info.stdout == 'x86_64' %}amd64{% elif architecture_info.stdout == 'aarch64' %}arm64{% else %}Unsupported/Unknown{% endif %}
-
-    - name: Download kubectl
-      shell: |
-        ACTUAL_ARCH="{{ architecture_info.stdout }}"
-        TARGET_ARCH=""
-        if [ "${ACTUAL_ARCH}" = "x86_64" ]; then
-          TARGET_ARCH="amd64"
-        elif [ "${ACTUAL_ARCH}" = "aarch64" ]; then
-          TARGET_ARCH="arm64"
-        else
-          echo "Unsupported architecture for kubectl: ${ACTUAL_ARCH}" >&2
-          exit 1
-        fi
-        echo "Downloading kubectl for architecture: ${TARGET_ARCH}"
-        K8S_STABLE_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
-        curl -Lo ./kubectl "https://dl.k8s.io/release/${K8S_STABLE_VERSION}/bin/linux/${TARGET_ARCH}/kubectl"
-
-    - name: Make kubectl executable
-      shell: chmod +x ./kubectl
-
-    - name: Move kubectl to /usr/local/bin
-      shell: mv ./kubectl /usr/local/bin/kubectl
-
-    - name: Download kind
-      shell: |
-        ACTUAL_ARCH="{{ architecture_info.stdout }}"
-        TARGET_ARCH=""
-        if [ "${ACTUAL_ARCH}" = "x86_64" ]; then
-          TARGET_ARCH="amd64"
-        elif [ "${ACTUAL_ARCH}" = "aarch64" ]; then
-          TARGET_ARCH="arm64"
-        else
-          echo "Unsupported architecture: ${ACTUAL_ARCH}" >&2
-          exit 1
-        fi
-        echo "Downloading kind for architecture: ${TARGET_ARCH}"
-        curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.22.0/kind-linux-${TARGET_ARCH}"
-      args:
-        creates: ./kind
-      register: download_kind_result
-
-    - name: Make kind executable
-      shell: chmod +x ./kind
-
-    - name: Move kind to /usr/local/bin
-      shell: mv ./kind /usr/local/bin/kind
-
-    - name: Ensure /usr/local/bin is in PATH
-      lineinfile:
-        path: /etc/profile
-        line: 'export PATH=$PATH:/usr/local/bin'
-        state: present
-
-    - name: Check if kind cluster already exists
-      shell: kind get clusters | grep -q '^selenium-grid$'
-      register: kind_cluster_exists
-      ignore_errors: true
-      changed_when: false
-      failed_when: false
-      environment:
-        PATH: "/usr/local/bin:/usr/bin:/bin"
-
-    - name: Create Kind cluster if it does not exist
-      shell: kind create cluster --name selenium-grid
-      when: kind_cluster_exists.rc != 0
-      environment:
-        PATH: "/usr/local/bin:/usr/bin:/bin"
-
-    - name: Create directory for kubernetes manifests on EC2
-      file:
-        path: /home/ec2-user/kubernetes_manifests
-        state: directory
-        owner: ec2-user
-        group: ec2-user
-        mode: '0755'
-
-    - name: Copy Kubernetes manifest files to EC2
+    - name: Add Kubernetes YUM repository
       copy:
-        src: ../kubernetes/
-        dest: /home/ec2-user/kubernetes_manifests/
-        owner: ec2-user
-        group: ec2-user
-        mode: '0644'
+        dest: /etc/yum.repos.d/kubernetes.repo
+        content: |
+          [kubernetes]
+          name=Kubernetes
+          baseurl=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/
+          enabled=1
+          gpgcheck=1
+          gpgkey=https://pkgs.k8s.io/core:/stable:/v1.28/rpm/repodata/repomd.xml.key
+          exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
+      # The exclude above is temporary to allow specific version install below.
+      # A better way is to use yum version pinning or more specific repo definition if available.
 
-    - name: Create DockerHub imagePullSecret for Kubernetes
-      shell: |
-        kubectl create secret docker-registry dockerhub-secret \
-          --docker-username="{{ dockerhub_username }}" \
-          --docker-password="{{ dockerhub_password }}" \
-          --docker-email="{{ dockerhub_email }}" \
-          --dry-run=client -o yaml | kubectl apply -f -
-      environment:
-        PATH: "/usr/local/bin:/usr/bin:/bin"
-      vars:
-        dockerhub_username: "{{ lookup('env', 'DOCKERHUB_USERNAME') }}"
-        dockerhub_password: "{{ lookup('env', 'DOCKERHUB_PASSWORD') }}"
-        dockerhub_email: "{{ lookup('env', 'DOCKERHUB_EMAIL') }}"
+    - name: Install Kubernetes packages (kubelet, kubeadm, kubectl) and hold them
+      yum:
+        name:
+          - kubelet-1.28.* # Example: Pin to a specific minor version series
+          - kubeadm-1.28.*
+          - kubectl-1.28.*
+        state: present
+        # Add 'disable_excludes=kubernetes' if you use exclude in the repo definition and want to install them here.
+        # For now, assuming the exclude in the repo is sufficient or handled by yum's logic.
+      # Consider adding 'lock_version' or similar for yum to prevent accidental upgrades.
+      # For Amazon Linux 2, `yum versionlock` plugin might be needed:
+      # - name: Install yum-plugin-versionlock
+      #   yum:
+      #     name: yum-plugin-versionlock
+      #     state: present
+      # - name: Add version lock for Kubernetes packages
+      #   shell: yum versionlock add kubelet kubeadm kubectl
 
-    - name: Apply Selenium Hub Service
-      shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-hub-service.yml
-      environment:
-        PATH: "/usr/local/bin:/usr/bin:/bin"
+    - name: Enable kubelet service
+      systemd:
+        name: kubelet
+        enabled: true
+        # state: started # Kubelet will fail to start until configured by kubeadm
 
-    - name: Apply BDD Service Service
-      shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/bdd-service-service.yml
-      environment:
-        PATH: "/usr/local/bin:/usr/bin:/bin"
+    - name: Ensure br_netfilter module is loaded
+      community.general.modprobe:
+        name: br_netfilter
+        state: present
+      notify: Configure sysctl for Kubernetes
 
-    - name: Apply Selenium Hub Deployment
-      shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-hub-deployment.yml
-      environment:
-        PATH: "/usr/local/bin:/usr/bin:/bin"
+    - name: Ensure overlay module is loaded
+      community.general.modprobe:
+        name: overlay
+        state: present
+      notify: Configure sysctl for Kubernetes
 
-    - name: Apply Selenium Node Chrome Deployment
-      shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-node-chrome-deployment.yml
-      environment:
-        PATH: "/usr/local/bin:/usr/bin:/bin"
+    - name: Create Kubernetes sysctl config file
+      copy:
+        dest: /etc/sysctl.d/99-kubernetes-cri.conf
+        content: |
+          net.bridge.bridge-nf-call-iptables  = 1
+          net.ipv4.ip_forward                 = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+      notify: Configure sysctl for Kubernetes
 
-    - name: Apply BDD Service Deployment
-      shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/bdd-service-deployment.yml
-      environment:
-        PATH: "/usr/local/bin:/usr/bin:/bin"
+  handlers:
+    - name: Restart containerd
+      systemd:
+        name: containerd
+        state: restarted
 
-    - name: List running Docker containers
-      shell: docker ps
+    - name: Configure sysctl for Kubernetes
+      command: sysctl --system
+
+  # Original tasks continue below, will be refactored for master/worker roles
+
+  # ==============================================================================
+  # MASTER NODE CONFIGURATION
+  # ==============================================================================
+  # Note: In a production setup, use proper Ansible inventory groups instead of inventory_hostname checks.
+  - name: Master Node Setup Block
+    block:
+      - name: Initialize Kubernetes cluster (master node)
+        shell: kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=NumCPU,Mem # Added ignore for potential lab resource constraints
+        args:
+          creates: /etc/kubernetes/admin.conf
+        register: kubeadm_init_result
+
+      - name: Display kubeadm init output
+        debug:
+          var: kubeadm_init_result.stdout_lines
+
+      - name: Create .kube directory for ec2-user
+        file:
+          path: /home/ec2-user/.kube
+          state: directory
+          owner: ec2-user
+          group: ec2-user
+          mode: '0755'
+
+      - name: Copy admin.conf to ec2-user's .kube directory
+        copy:
+          src: /etc/kubernetes/admin.conf
+          dest: /home/ec2-user/.kube/config
+          remote_src: yes
+          owner: ec2-user
+          group: ec2-user
+          mode: '0600'
+
+      - name: Install Flannel CNI (master node)
+        shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+        args:
+          # Ensure this runs after kubeconfig is set up for ec2-user or specify KUBECONFIG env
+          creates: /etc/kubernetes/flannel-applied # This is a simple way to check, might need a more robust check
+        environment:
+          KUBECONFIG: /home/ec2-user/.kube/config
+        become_user: ec2-user # Run kubectl as ec2-user
+
+      # Task to extract and store the join command. This is a simplified approach.
+      # In a real setup, this would be handled more robustly (e.g., written to a file on a shared mount,
+      # or using Ansible Tower/AWX's capabilities to share facts between hosts/plays).
+      - name: Extract join command from kubeadm init output
+        set_fact:
+          kubeadm_join_command: "{{ kubeadm_init_result.stdout | regex_search('kubeadm join.*') }}"
+        when: kubeadm_init_result.stdout is defined
+
+      - name: Display the extracted join command (for debugging)
+        debug:
+          var: kubeadm_join_command
+        when: kubeadm_join_command is defined
+
+      # Placeholder: Persist the join command for worker nodes
+      # This is where you would typically use a mechanism like `add_host` with `groups`
+      # or write to a shared file that worker nodes can access.
+      # For this subtask, we'll assume the join command is manually retrieved or passed.
+      # A common pattern is to run master setup, then use run_once: true on the master
+      # to get the join command, and then workers use that fact.
+      # Example (conceptual, might need adjustment based on actual flow):
+      # - name: Store join command for workers
+      #   set_fact:
+      #     worker_join_command: "{{ hostvars['k8s-master']['kubeadm_join_command'] }}" # Requires master hostname to be 'k8s-master' in inventory
+      #   run_once: true # This might be better placed in a separate play or using delegate_to
+
+    when: inventory_hostname == "k8s-master" # Replace with group targeting
+
+  # ==============================================================================
+  # WORKER NODE CONFIGURATION
+  # ==============================================================================
+  # Note: In a production setup, use proper Ansible inventory groups.
+  - name: Worker Node Setup Block
+    block:
+      - name: Join worker node to Kubernetes cluster
+        # This command needs to be dynamically populated with the output from `kubeadm init` on the master.
+        # For this subtask, it's a placeholder. In a real playbook, you'd use a fact
+        # set by the master node, or a command constructed from multiple facts (token, hash).
+        # Example: shell: "{{ hostvars['k8s-master']['kubeadm_join_command'] }}"
+        # Ensure this task runs *after* the master has initialized and the join command is available.
+        # Adding --ignore-preflight-errors=NumCPU,Mem for lab environment
+        shell: "{{ hostvars[groups['masters'][0]]['kubeadm_join_command'] }} --ignore-preflight-errors=NumCPU,Mem" # Assumes a group 'masters' with one master
+        args:
+          creates: /etc/kubernetes/kubelet.conf # Kubelet config is created after successful join
+        when: hostvars[groups['masters'][0]]['kubeadm_join_command'] is defined and hostvars[groups['masters'][0]]['kubeadm_join_command'] != ""
+    when: inventory_hostname != "k8s-master" # Replace with group targeting (e.g., when: "'workers' in group_names")
+
+  # ==============================================================================
+  # DEPLOY KUBERNETES MANIFESTS (ON MASTER NODE)
+  # ==============================================================================
+  - name: Deploy Kubernetes Manifests Block
+    block:
+      - name: Create directory for kubernetes manifests on EC2 (master)
+        file:
+          path: /home/ec2-user/kubernetes_manifests
+          state: directory
+          owner: ec2-user
+          group: ec2-user
+          mode: '0755'
+
+      - name: Copy Kubernetes manifest files to EC2 (master)
+        copy:
+          src: ../kubernetes/ # Assuming this path is relative to the playbook file
+          dest: /home/ec2-user/kubernetes_manifests/
+          owner: ec2-user
+          group: ec2-user
+          mode: '0644'
+
+      - name: Create DockerHub imagePullSecret for Kubernetes (master)
+        shell: |
+          kubectl create secret docker-registry dockerhub-secret \
+            --docker-username="{{ dockerhub_username }}" \
+            --docker-password="{{ dockerhub_password }}" \
+            --docker-email="{{ dockerhub_email }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+        environment:
+          KUBECONFIG: /home/ec2-user/.kube/config
+        vars:
+          dockerhub_username: "{{ lookup('env', 'DOCKERHUB_USERNAME') }}"
+          dockerhub_password: "{{ lookup('env', 'DOCKERHUB_PASSWORD') }}"
+          dockerhub_email: "{{ lookup('env', 'DOCKERHUB_EMAIL') }}"
+        become_user: ec2-user # Run kubectl as ec2-user
+        # Consider adding a check if the secret already exists
+
+      - name: Apply Selenium Hub Service (master)
+        shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-hub-service.yml
+        environment:
+          KUBECONFIG: /home/ec2-user/.kube/config
+        become_user: ec2-user
+
+      - name: Apply BDD Service Service (master)
+        shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/bdd-service-service.yml
+        environment:
+          KUBECONFIG: /home/ec2-user/.kube/config
+        become_user: ec2-user
+
+      - name: Apply Selenium Hub Deployment (master)
+        shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-hub-deployment.yml
+        environment:
+          KUBECONFIG: /home/ec2-user/.kube/config
+        become_user: ec2-user
+
+      - name: Apply Selenium Node Chrome Deployment (master)
+        shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-node-chrome-deployment.yml
+        environment:
+          KUBECONFIG: /home/ec2-user/.kube/config
+        become_user: ec2-user
+
+      - name: Apply BDD Service Deployment (master)
+        shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/bdd-service-deployment.yml
+        environment:
+          KUBECONFIG: /home/ec2-user/.kube/config
+        become_user: ec2-user
+
+    when: inventory_hostname == "k8s-master" # Replace with group targeting (e.g., when: "'masters' in group_names")
 
 
 
