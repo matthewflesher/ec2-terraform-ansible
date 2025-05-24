@@ -160,60 +160,16 @@
             group: ec2-user
             mode: '0600'
 
-        - name: Install Flannel CNI (master node)
+        - name: Deploy Flannel CNI plugin
           shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
-          args:
-            # Ensure this runs after kubeconfig is set up for ec2-user or specify KUBECONFIG env
-            creates: /etc/kubernetes/flannel-applied # This is a simple way to check, might need a more robust check
           environment:
-            KUBECONFIG: /home/ec2-user/.kube/config
-          become_user: ec2-user # Run kubectl as ec2-user
-
-        # Task to extract and store the join command. This is a simplified approach.
-        # In a real setup, this would be handled more robustly (e.g., written to a file on a shared mount,
-        # or using Ansible Tower/AWX's capabilities to share facts between hosts/plays).
-        - name: Extract join command from kubeadm init output
-          set_fact:
-            kubeadm_join_command: "{{ kubeadm_init_result.stdout | regex_search('kubeadm join.*') }}"
-          when: kubeadm_init_result.stdout is defined
-
-        - name: Display the extracted join command (for debugging)
-          debug:
-            var: kubeadm_join_command
-          when: kubeadm_join_command is defined
-
-        # Placeholder: Persist the join command for worker nodes
-        # This is where you would typically use a mechanism like `add_host` with `groups`
-        # or write to a shared file that worker nodes can access.
-        # For this subtask, we'll assume the join command is manually retrieved or passed.
-        # A common pattern is to run master setup, then use run_once: true on the master
-        # to get the join command, and then workers use that fact.
-        # Example (conceptual, might need adjustment based on actual flow):
-        # - name: Store join command for workers
-        #   set_fact:
-        #     worker_join_command: "{{ hostvars['k8s-master']['kubeadm_join_command'] }}" # Requires master hostname to be 'k8s-master' in inventory
-        #   run_once: true # This might be better placed in a separate play or using delegate_to
-
-      when: inventory_hostname == "k8s-master" # Replace with group targeting
-
-    # ==============================================================================
-    # WORKER NODE CONFIGURATION
-    # ==============================================================================
-    # Note: In a production setup, use proper Ansible inventory groups.
-    - name: Worker Node Setup Block
-      block:
-        - name: Join worker node to Kubernetes cluster
-          # This command needs to be dynamically populated with the output from `kubeadm init` on the master.
-          # For this subtask, it's a placeholder. In a real playbook, you'd use a fact
-          # set by the master node, or a command constructed from multiple facts (token, hash).
-          # Example: shell: "{{ hostvars['k8s-master']['kubeadm_join_command'] }}"
-          # Ensure this task runs *after* the master has initialized and the join command is available.
-          # Adding --ignore-preflight-errors=NumCPU,Mem for lab environment
-          shell: "{{ hostvars[groups['masters'][0]]['kubeadm_join_command'] }} --ignore-preflight-errors=NumCPU,Mem" # Assumes a group 'masters' with one master
-          args:
-            creates: /etc/kubernetes/kubelet.conf # Kubelet config is created after successful join
-          when: hostvars[groups['masters'][0]]['kubeadm_join_command'] is defined and hostvars[groups['masters'][0]]['kubeadm_join_command'] != ""
-      when: inventory_hostname != "k8s-master" # Replace with group targeting (e.g., when: "'workers' in group_names")
+            KUBECONFIG: /etc/kubernetes/admin.conf
+          when: inventory_hostname == 'k8s-master'
+    
+        - name: Join worker nodes to the cluster
+          shell: kubeadm join 172.31.88.98:6443 --token cj86wm.x8asjft6rt2fq0ok \
+                 --discovery-token-ca-cert-hash sha256:8c180cf118d70ab7ecab737dca9e9cd7984c0b8746350210d267e98460c475dc
+          when: inventory_hostname != 'k8s-master'"
 
     # ==============================================================================
     # DEPLOY KUBERNETES MANIFESTS (ON MASTER NODE)
