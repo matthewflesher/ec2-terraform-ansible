@@ -39,27 +39,25 @@
       debug:
         msg: "OS is {{ ansible_distribution }}"
     
-    - name: Install Kubernetes repo
+    - name: Add Kubernetes repo (v1.29)
       shell: |
-        cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+        sudo tee /etc/yum.repos.d/kubernetes.repo <<EOF
         [kubernetes]
         name=Kubernetes
-        baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
+        baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
         enabled=1
         gpgcheck=1
         repo_gpgcheck=1
-        gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
-        exclude=kubelet kubeadm kubectl
+        gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
         EOF
-        sudo setenforce 0 || true
       when: ansible_distribution == "Amazon"
     
-    - name: Install kubelet, kubeadm, and kubectl with retry
+    - name: Install kubelet, kubeadm, kubectl (v1.29) with retry
       shell: |
-        sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+        sudo yum install -y kubelet kubeadm kubectl
       register: kube_result
       retries: 5
-      delay: 15
+      delay: 10
       until: kube_result.rc == 0
       when: ansible_distribution == "Amazon"
     
