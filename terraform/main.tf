@@ -65,7 +65,7 @@ resource "aws_instance" "k8s_master" {
 }
 
 resource "aws_instance" "k8s_worker_1" {
-  ami           = "ami-0972357ba34d1ec40" # Amazon Linux or similar
+  ami           = "ami-0e58b56aa4d64231b" # Amazon Linux or similar
   instance_type = "t3.medium"
   key_name      = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.selenium_sg.id]
@@ -82,7 +82,7 @@ resource "aws_instance" "k8s_worker_1" {
 }
 
 resource "aws_instance" "k8s_worker_2" {
-  ami           = "ami-0972357ba34d1ec40" # Amazon Linux or similar
+  ami           = "ami-0e58b56aa4d64231b" # Amazon Linux or similar
   instance_type = "t3.medium"
   key_name      = aws_key_pair.deployer.key_name
   vpc_security_group_ids = [aws_security_group.selenium_sg.id]
