@@ -35,6 +35,13 @@
       setup:
 
   tasks:
+    - name: Set up Kubernetes cluster on Amazon Linux 2
+  hosts: all
+  become: yes
+  vars:
+    k8s_version: "1.29"
+
+  tasks:
     - name: Disable SELinux enforcement
       shell: setenforce 0
       ignore_errors: yes
@@ -84,16 +91,32 @@
 
     - name: Add Kubernetes repo
       shell: |
-        tee /etc/yum.repos.d/kubernetes.repo <<EOF
-        [kubernetes]
-        name=Kubernetes
-        baseurl=https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/
-        enabled=1
-        gpgcheck=1
-        repo_gpgcheck=1
-        gpgkey=https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/repodata/repomd.xml.key
-        EOF
+        cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/rpm/repodata/repomd.xml.key
+EOF
       when: ansible_distribution == "Amazon"
+
+    - name: Ensure kubelet systemd drop-in directory exists
+      file:
+        path: /etc/systemd/system/kubelet.service.d
+        state: directory
+        mode: '0755'
+
+    - name: Create kubelet containerd config drop-in
+      copy:
+        dest: /etc/systemd/system/kubelet.service.d/0-containerd.conf
+        content: |
+          [Service]
+          Environment="KUBELET_EXTRA_ARGS=--container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
+
+    - name: Reload systemd after drop-in
+      shell: systemctl daemon-reexec
 
     - name: Install kubelet, kubeadm, and kubectl
       shell: yum install -y kubelet kubeadm kubectl
@@ -105,16 +128,6 @@
 
     - name: Enable kubelet
       shell: systemctl enable --now kubelet
-
-    - name: Create kubelet containerd config drop-in
-      copy:
-        dest: /etc/systemd/system/kubelet.service.d/0-containerd.conf
-        content: |
-          [Service]
-          Environment="KUBELET_EXTRA_ARGS=--container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock"
-
-    - name: Reload systemd after drop-in
-      shell: systemctl daemon-reexec
 
     - name: Restart kubelet to apply config
       shell: systemctl restart kubelet
