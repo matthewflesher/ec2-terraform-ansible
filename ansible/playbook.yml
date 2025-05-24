@@ -119,6 +119,163 @@
           net.bridge.bridge-nf-call-ip6tables = 1
       notify: Configure sysctl for Kubernetes
 
+    # ==============================================================================
+    # MASTER NODE CONFIGURATION
+    # ==============================================================================
+    # Note: In a production setup, use proper Ansible inventory groups instead of inventory_hostname checks.
+    - name: Master Node Setup Block
+      block:
+        - name: Initialize Kubernetes cluster (master node)
+          shell: kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=NumCPU,Mem # Added ignore for potential lab resource constraints
+          args:
+            creates: /etc/kubernetes/admin.conf
+          register: kubeadm_init_result
+
+        - name: Display kubeadm init output
+          debug:
+            var: kubeadm_init_result.stdout_lines
+
+        - name: Create .kube directory for ec2-user
+          file:
+            path: /home/ec2-user/.kube
+            state: directory
+            owner: ec2-user
+            group: ec2-user
+            mode: '0755'
+
+        - name: Copy admin.conf to ec2-user's .kube directory
+          copy:
+            src: /etc/kubernetes/admin.conf
+            dest: /home/ec2-user/.kube/config
+            remote_src: yes
+            owner: ec2-user
+            group: ec2-user
+            mode: '0600'
+
+        - name: Install Flannel CNI (master node)
+          shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+          args:
+            # Ensure this runs after kubeconfig is set up for ec2-user or specify KUBECONFIG env
+            creates: /etc/kubernetes/flannel-applied # This is a simple way to check, might need a more robust check
+          environment:
+            KUBECONFIG: /home/ec2-user/.kube/config
+          become_user: ec2-user # Run kubectl as ec2-user
+
+        # Task to extract and store the join command. This is a simplified approach.
+        # In a real setup, this would be handled more robustly (e.g., written to a file on a shared mount,
+        # or using Ansible Tower/AWX's capabilities to share facts between hosts/plays).
+        - name: Extract join command from kubeadm init output
+          set_fact:
+            kubeadm_join_command: "{{ kubeadm_init_result.stdout | regex_search('kubeadm join.*') }}"
+          when: kubeadm_init_result.stdout is defined
+
+        - name: Display the extracted join command (for debugging)
+          debug:
+            var: kubeadm_join_command
+          when: kubeadm_join_command is defined
+
+        # Placeholder: Persist the join command for worker nodes
+        # This is where you would typically use a mechanism like `add_host` with `groups`
+        # or write to a shared file that worker nodes can access.
+        # For this subtask, we'll assume the join command is manually retrieved or passed.
+        # A common pattern is to run master setup, then use run_once: true on the master
+        # to get the join command, and then workers use that fact.
+        # Example (conceptual, might need adjustment based on actual flow):
+        # - name: Store join command for workers
+        #   set_fact:
+        #     worker_join_command: "{{ hostvars['k8s-master']['kubeadm_join_command'] }}" # Requires master hostname to be 'k8s-master' in inventory
+        #   run_once: true # This might be better placed in a separate play or using delegate_to
+
+      when: inventory_hostname == "k8s-master" # Replace with group targeting
+
+    # ==============================================================================
+    # WORKER NODE CONFIGURATION
+    # ==============================================================================
+    # Note: In a production setup, use proper Ansible inventory groups.
+    - name: Worker Node Setup Block
+      block:
+        - name: Join worker node to Kubernetes cluster
+          # This command needs to be dynamically populated with the output from `kubeadm init` on the master.
+          # For this subtask, it's a placeholder. In a real playbook, you'd use a fact
+          # set by the master node, or a command constructed from multiple facts (token, hash).
+          # Example: shell: "{{ hostvars['k8s-master']['kubeadm_join_command'] }}"
+          # Ensure this task runs *after* the master has initialized and the join command is available.
+          # Adding --ignore-preflight-errors=NumCPU,Mem for lab environment
+          shell: "{{ hostvars[groups['masters'][0]]['kubeadm_join_command'] }} --ignore-preflight-errors=NumCPU,Mem" # Assumes a group 'masters' with one master
+          args:
+            creates: /etc/kubernetes/kubelet.conf # Kubelet config is created after successful join
+          when: hostvars[groups['masters'][0]]['kubeadm_join_command'] is defined and hostvars[groups['masters'][0]]['kubeadm_join_command'] != ""
+      when: inventory_hostname != "k8s-master" # Replace with group targeting (e.g., when: "'workers' in group_names")
+
+    # ==============================================================================
+    # DEPLOY KUBERNETES MANIFESTS (ON MASTER NODE)
+    # ==============================================================================
+    - name: Deploy Kubernetes Manifests Block
+      block:
+        - name: Create directory for kubernetes manifests on EC2 (master)
+          file:
+            path: /home/ec2-user/kubernetes_manifests
+            state: directory
+            owner: ec2-user
+            group: ec2-user
+            mode: '0755'
+
+        - name: Copy Kubernetes manifest files to EC2 (master)
+          copy:
+            src: ../kubernetes/ # Assuming this path is relative to the playbook file
+            dest: /home/ec2-user/kubernetes_manifests/
+            owner: ec2-user
+            group: ec2-user
+            mode: '0644'
+
+        - name: Create DockerHub imagePullSecret for Kubernetes (master)
+          shell: |
+            kubectl create secret docker-registry dockerhub-secret \
+              --docker-username="{{ dockerhub_username }}" \
+              --docker-password="{{ dockerhub_password }}" \
+              --docker-email="{{ dockerhub_email }}" \
+              --dry-run=client -o yaml | kubectl apply -f -
+          environment:
+            KUBECONFIG: /home/ec2-user/.kube/config
+          vars:
+            dockerhub_username: "{{ lookup('env', 'DOCKERHUB_USERNAME') }}"
+            dockerhub_password: "{{ lookup('env', 'DOCKERHUB_PASSWORD') }}"
+            dockerhub_email: "{{ lookup('env', 'DOCKERHUB_EMAIL') }}"
+          become_user: ec2-user # Run kubectl as ec2-user
+          # Consider adding a check if the secret already exists
+
+        - name: Apply Selenium Hub Service (master)
+          shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-hub-service.yml
+          environment:
+            KUBECONFIG: /home/ec2-user/.kube/config
+          become_user: ec2-user
+
+        - name: Apply BDD Service Service (master)
+          shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/bdd-service-service.yml
+          environment:
+            KUBECONFIG: /home/ec2-user/.kube/config
+          become_user: ec2-user
+
+        - name: Apply Selenium Hub Deployment (master)
+          shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-hub-deployment.yml
+          environment:
+            KUBECONFIG: /home/ec2-user/.kube/config
+          become_user: ec2-user
+
+        - name: Apply Selenium Node Chrome Deployment (master)
+          shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-node-chrome-deployment.yml
+          environment:
+            KUBECONFIG: /home/ec2-user/.kube/config
+          become_user: ec2-user
+
+        - name: Apply BDD Service Deployment (master)
+          shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/bdd-service-deployment.yml
+          environment:
+            KUBECONFIG: /home/ec2-user/.kube/config
+          become_user: ec2-user
+
+      when: inventory_hostname == "k8s-master" # Replace with group targeting (e.g., when: "'masters' in group_names")
+
   handlers:
     - name: Restart containerd
       systemd:
@@ -127,165 +284,6 @@
 
     - name: Configure sysctl for Kubernetes
       command: sysctl --system
-
-  # Original tasks continue below, will be refactored for master/worker roles
-
-  # ==============================================================================
-  # MASTER NODE CONFIGURATION
-  # ==============================================================================
-  # Note: In a production setup, use proper Ansible inventory groups instead of inventory_hostname checks.
-  - name: Master Node Setup Block
-    block:
-      - name: Initialize Kubernetes cluster (master node)
-        shell: kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=NumCPU,Mem # Added ignore for potential lab resource constraints
-        args:
-          creates: /etc/kubernetes/admin.conf
-        register: kubeadm_init_result
-
-      - name: Display kubeadm init output
-        debug:
-          var: kubeadm_init_result.stdout_lines
-
-      - name: Create .kube directory for ec2-user
-        file:
-          path: /home/ec2-user/.kube
-          state: directory
-          owner: ec2-user
-          group: ec2-user
-          mode: '0755'
-
-      - name: Copy admin.conf to ec2-user's .kube directory
-        copy:
-          src: /etc/kubernetes/admin.conf
-          dest: /home/ec2-user/.kube/config
-          remote_src: yes
-          owner: ec2-user
-          group: ec2-user
-          mode: '0600'
-
-      - name: Install Flannel CNI (master node)
-        shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
-        args:
-          # Ensure this runs after kubeconfig is set up for ec2-user or specify KUBECONFIG env
-          creates: /etc/kubernetes/flannel-applied # This is a simple way to check, might need a more robust check
-        environment:
-          KUBECONFIG: /home/ec2-user/.kube/config
-        become_user: ec2-user # Run kubectl as ec2-user
-
-      # Task to extract and store the join command. This is a simplified approach.
-      # In a real setup, this would be handled more robustly (e.g., written to a file on a shared mount,
-      # or using Ansible Tower/AWX's capabilities to share facts between hosts/plays).
-      - name: Extract join command from kubeadm init output
-        set_fact:
-          kubeadm_join_command: "{{ kubeadm_init_result.stdout | regex_search('kubeadm join.*') }}"
-        when: kubeadm_init_result.stdout is defined
-
-      - name: Display the extracted join command (for debugging)
-        debug:
-          var: kubeadm_join_command
-        when: kubeadm_join_command is defined
-
-      # Placeholder: Persist the join command for worker nodes
-      # This is where you would typically use a mechanism like `add_host` with `groups`
-      # or write to a shared file that worker nodes can access.
-      # For this subtask, we'll assume the join command is manually retrieved or passed.
-      # A common pattern is to run master setup, then use run_once: true on the master
-      # to get the join command, and then workers use that fact.
-      # Example (conceptual, might need adjustment based on actual flow):
-      # - name: Store join command for workers
-      #   set_fact:
-      #     worker_join_command: "{{ hostvars['k8s-master']['kubeadm_join_command'] }}" # Requires master hostname to be 'k8s-master' in inventory
-      #   run_once: true # This might be better placed in a separate play or using delegate_to
-
-    when: inventory_hostname == "k8s-master" # Replace with group targeting
-
-  # ==============================================================================
-  # WORKER NODE CONFIGURATION
-  # ==============================================================================
-  # Note: In a production setup, use proper Ansible inventory groups.
-  - name: Worker Node Setup Block
-    block:
-      - name: Join worker node to Kubernetes cluster
-        # This command needs to be dynamically populated with the output from `kubeadm init` on the master.
-        # For this subtask, it's a placeholder. In a real playbook, you'd use a fact
-        # set by the master node, or a command constructed from multiple facts (token, hash).
-        # Example: shell: "{{ hostvars['k8s-master']['kubeadm_join_command'] }}"
-        # Ensure this task runs *after* the master has initialized and the join command is available.
-        # Adding --ignore-preflight-errors=NumCPU,Mem for lab environment
-        shell: "{{ hostvars[groups['masters'][0]]['kubeadm_join_command'] }} --ignore-preflight-errors=NumCPU,Mem" # Assumes a group 'masters' with one master
-        args:
-          creates: /etc/kubernetes/kubelet.conf # Kubelet config is created after successful join
-        when: hostvars[groups['masters'][0]]['kubeadm_join_command'] is defined and hostvars[groups['masters'][0]]['kubeadm_join_command'] != ""
-    when: inventory_hostname != "k8s-master" # Replace with group targeting (e.g., when: "'workers' in group_names")
-
-  # ==============================================================================
-  # DEPLOY KUBERNETES MANIFESTS (ON MASTER NODE)
-  # ==============================================================================
-  - name: Deploy Kubernetes Manifests Block
-    block:
-      - name: Create directory for kubernetes manifests on EC2 (master)
-        file:
-          path: /home/ec2-user/kubernetes_manifests
-          state: directory
-          owner: ec2-user
-          group: ec2-user
-          mode: '0755'
-
-      - name: Copy Kubernetes manifest files to EC2 (master)
-        copy:
-          src: ../kubernetes/ # Assuming this path is relative to the playbook file
-          dest: /home/ec2-user/kubernetes_manifests/
-          owner: ec2-user
-          group: ec2-user
-          mode: '0644'
-
-      - name: Create DockerHub imagePullSecret for Kubernetes (master)
-        shell: |
-          kubectl create secret docker-registry dockerhub-secret \
-            --docker-username="{{ dockerhub_username }}" \
-            --docker-password="{{ dockerhub_password }}" \
-            --docker-email="{{ dockerhub_email }}" \
-            --dry-run=client -o yaml | kubectl apply -f -
-        environment:
-          KUBECONFIG: /home/ec2-user/.kube/config
-        vars:
-          dockerhub_username: "{{ lookup('env', 'DOCKERHUB_USERNAME') }}"
-          dockerhub_password: "{{ lookup('env', 'DOCKERHUB_PASSWORD') }}"
-          dockerhub_email: "{{ lookup('env', 'DOCKERHUB_EMAIL') }}"
-        become_user: ec2-user # Run kubectl as ec2-user
-        # Consider adding a check if the secret already exists
-
-      - name: Apply Selenium Hub Service (master)
-        shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-hub-service.yml
-        environment:
-          KUBECONFIG: /home/ec2-user/.kube/config
-        become_user: ec2-user
-
-      - name: Apply BDD Service Service (master)
-        shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/bdd-service-service.yml
-        environment:
-          KUBECONFIG: /home/ec2-user/.kube/config
-        become_user: ec2-user
-
-      - name: Apply Selenium Hub Deployment (master)
-        shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-hub-deployment.yml
-        environment:
-          KUBECONFIG: /home/ec2-user/.kube/config
-        become_user: ec2-user
-
-      - name: Apply Selenium Node Chrome Deployment (master)
-        shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/selenium-node-chrome-deployment.yml
-        environment:
-          KUBECONFIG: /home/ec2-user/.kube/config
-        become_user: ec2-user
-
-      - name: Apply BDD Service Deployment (master)
-        shell: kubectl apply -f /home/ec2-user/kubernetes_manifests/bdd-service-deployment.yml
-        environment:
-          KUBECONFIG: /home/ec2-user/.kube/config
-        become_user: ec2-user
-
-    when: inventory_hostname == "k8s-master" # Replace with group targeting (e.g., when: "'masters' in group_names")
 
 
 
