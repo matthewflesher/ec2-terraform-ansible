@@ -43,6 +43,7 @@
       yum:
         name: containerd.io
         state: present
+        use_backend: dnf5
       when: ansible_distribution == "Amazon"
 
     - name: Ensure containerd config directory exists
