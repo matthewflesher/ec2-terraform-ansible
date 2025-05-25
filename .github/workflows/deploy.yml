@@ -54,6 +54,7 @@ jobs:
           echo '}' >> master_info.json
       
       - name: Upload Master Info JSON to S3
+        working-directory: terraform
         run: |
           aws s3 cp master_info.json s3://bddfeatures/master_info.json
         env:
