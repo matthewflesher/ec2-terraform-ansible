@@ -46,8 +46,8 @@ jobs:
         run: terraform -chdir=terraform apply -auto-approve -var-file=terraform.tfvars
 
       - name: Extract EC2 Master Info to JSON
+        working-directory: terraform
         run: |
-          cd ../../terraform
           echo '{' > master_info.json
           echo '"master_public_ip": "'$(terraform output -raw master_public_ip)'",' >> master_info.json
           echo '"master_public_dns": "'$(terraform output -raw master_public_dns)'"' >> master_info.json
