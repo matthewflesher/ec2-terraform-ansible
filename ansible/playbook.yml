@@ -198,7 +198,19 @@
         mode: '0755'
     
     - name: Install Helm
-      command: /tmp/get_helm.sh creates=/usr/local/bin/helm
+      shell: |
+        curl -fsSL https://get.helm.sh/helm-v3.18.0-linux-amd64.tar.gz -o helm.tar.gz
+        tar -zxvf helm.tar.gz
+        mv linux-amd64/helm /usr/local/bin/helm
+        chmod +x /usr/local/bin/helm
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Ensure /usr/local/bin is in PATH for future sessions
+      lineinfile:
+        path: /etc/profile
+        line: 'export PATH=$PATH:/usr/local/bin'
+        state: present
 
     # ==============================================================================
     # DEPLOY KUBERNETES MANIFESTS (ON MASTER NODE)
